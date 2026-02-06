@@ -4,19 +4,6 @@
 
 **minecraft‑java‑core** is a **NodeJS/TypeScript** solution for launching both vanilla *and* modded Minecraft Java Edition without juggling JSON manifests, assets, libraries or Java runtimes yourself. Think of it as the *core* of an Electron/NW.js/CLI launcher.
 
----
-
-### Getting support
-Need help or just want to chat? Join the community Discord!
-
-<p align="center">
-    <a href="http://discord.luuxis.fr">
-        <img src="https://invidget.switchblade.xyz/e9q7Yr2cuQ">
-    </a>
-</p>
-
----
-
 ### Installing
 
 ```bash
@@ -239,8 +226,8 @@ assets/                LWJGL native indexes
 ### Contributors
 See the commit history for a full list. Special thanks to:
 
-* **Luuxis** — original author.
-* Community testers & issue reporters.
+* **Luuxis** - original author.
+* **BENZOOgataga** - Maintainer of the repository
 
 ---
 
