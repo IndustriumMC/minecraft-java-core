@@ -13,6 +13,7 @@
     "scripts": {
         "dev": "rimraf ./build && tsc -w",
         "build": "rimraf ./build && tsc && tsc -p tsconfig.esm.json",
+        "prepare": "npm run build",
         "prepublishOnly": "npm i && npm run build"
     },
     "engines": {

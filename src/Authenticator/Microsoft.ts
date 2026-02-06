@@ -69,6 +69,10 @@ async function getBase64(url: string): Promise<string> {
 	}
 }
 
+async function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export default class Microsoft {
 	public client_id: string;
 	public type: MicrosoftClientType;
@@ -134,7 +138,7 @@ export default class Microsoft {
 			const response = await fetch('https://login.live.com/oauth20_token.srf', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-				body: `client_id=${this.client_id}&code=${code}&grant_type=authorization_code&redirect_uri=${this.redirect_uri}`
+				body: `client_id=${this.client_id}&code=${code}&grant_type=authorization_code&redirect_uri=${this.redirect_uri}&scope=XboxLive.signin%20offline_access`
 			});
 			const oauth2 = await response.json();
 
@@ -176,7 +180,7 @@ export default class Microsoft {
 			const response = await fetch('https://login.live.com/oauth20_token.srf', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-				body: `grant_type=refresh_token&client_id=${this.client_id}&refresh_token=${acc.refresh_token}`
+				body: `grant_type=refresh_token&client_id=${this.client_id}&refresh_token=${acc.refresh_token}&scope=XboxLive.signin%20offline_access`
 			});
 			const oauth2 = await response.json();
 
@@ -231,36 +235,69 @@ export default class Microsoft {
 			return { error: xsts.error, errorType: 'xsts', ...xsts, refresh_token: oauth2.refresh_token };
 		}
 
+		const userHash = xsts?.DisplayClaims?.xui?.[0]?.uhs || xbl?.DisplayClaims?.xui?.[0]?.uhs;
+		if (!userHash) {
+			return { error: 'MISSING_USER_HASH', errorType: 'xsts', refresh_token: oauth2.refresh_token };
+		}
+
 		const mcLoginResponse = await fetch('https://api.minecraftservices.com/authentication/login_with_xbox', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
 			body: JSON.stringify({
-				identityToken: `XBL3.0 x=${xbl.DisplayClaims.xui[0].uhs};${xsts.Token}`
+				identityToken: `XBL3.0 x=${userHash};${xsts.Token}`
 			}),
 		});
 		const mcLogin = await mcLoginResponse.json();
 		if (mcLogin.error) {
 			return { error: mcLogin.error, errorType: 'mcLogin', ...mcLogin, refresh_token: oauth2.refresh_token };
 		}
-		if (!mcLogin.username) {
-			return { error: 'NO_MINECRAFT_ACCOUNT', errorType: 'mcLogin', ...mcLogin, refresh_token: oauth2.refresh_token };
+
+		const minecraftAccessToken = mcLogin.access_token || mcLogin.accessToken || mcLogin.token;
+		if (!minecraftAccessToken) {
+			const keys = mcLogin && typeof mcLogin === 'object' ? Object.keys(mcLogin).join(',') : 'none';
+			return { error: `MINECRAFT_TOKEN_MISSING_KEYS_${keys}`, errorType: 'mcLogin', refresh_token: oauth2.refresh_token };
 		}
+
+		let hasMinecraftEntitlement = false;
 
 		const mcstoreResponse = await fetch('https://api.minecraftservices.com/entitlements/mcstore', {
 			method: 'GET',
-			headers: { 'Authorization': `Bearer ${mcLogin.access_token}` },
+			headers: { 'Authorization': `Bearer ${minecraftAccessToken}` },
 		});
 		const mcstore = await mcstoreResponse.json();
-		if (mcstore.error) {
-			return { error: mcstore.error, errorType: 'mcStore', ...mcstore, refresh_token: oauth2.refresh_token };
+		if (!mcstore.error) {
+			const items = Array.isArray(mcstore.items) ? mcstore.items : [];
+			hasMinecraftEntitlement = items.some((item: { name?: string }) => item.name === 'game_minecraft' || item.name === 'product_minecraft');
 		}
 
-		if (!mcstore.items.some((item: { name: string }) => item.name === "game_minecraft" || item.name === "product_minecraft")) {
-			return { error: 'NO_MINECRAFT_ENTITLEMENTS', errorType: 'mcStore', ...mcstore, refresh_token: oauth2.refresh_token };
+		if (!hasMinecraftEntitlement) {
+			const requestId = typeof crypto.randomUUID === 'function'
+				? crypto.randomUUID()
+				: crypto.randomBytes(16).toString('hex');
+			const licenseResponse = await fetch(`https://api.minecraftservices.com/entitlements/license?requestId=${requestId}`, {
+				method: 'GET',
+				headers: { 'Authorization': `Bearer ${minecraftAccessToken}` },
+			});
+			const license = await licenseResponse.json();
+			if (!license.error) {
+				const items = Array.isArray(license.items) ? license.items : [];
+				hasMinecraftEntitlement = items.some((item: { name?: string }) => item.name === 'game_minecraft' || item.name === 'product_minecraft');
+			}
 		}
 
+		let profile: MinecraftProfile | AuthError = await this.getProfileWithRetry({ access_token: minecraftAccessToken }, 3);
+		if (!hasMinecraftEntitlement && !('error' in profile) && profile.id && profile.name) {
+			hasMinecraftEntitlement = true;
+		}
 
-		const profile = await this.getProfile(mcLogin);
+		if (!hasMinecraftEntitlement) {
+			return {
+				error: 'NO_MINECRAFT_ENTITLEMENTS',
+				errorType: 'mcStore',
+				refresh_token: oauth2.refresh_token
+			};
+		}
+
 		if ('error' in profile) {
 			return { error: profile.error, errorType: 'mcProfile', ...profile, refresh_token: oauth2.refresh_token };
 		}
@@ -283,7 +320,7 @@ export default class Microsoft {
 		}
 
 		return {
-			access_token: mcLogin.access_token,
+			access_token: minecraftAccessToken,
 			client_token: crypto.randomUUID(),
 			uuid: profile.id,
 			name: profile.name,
@@ -291,7 +328,7 @@ export default class Microsoft {
 			user_properties: "{}",
 			meta: {
 				type: 'Xbox',
-				access_token_expires_in: Date.now() + (mcLogin.expires_in * 1000),
+				access_token_expires_in: Date.now() + (Number(mcLogin.expires_in || mcLogin.expiresIn || 0) * 1000),
 				demo: false
 			},
 			xboxAccount: {
@@ -300,37 +337,70 @@ export default class Microsoft {
 				ageGroup: xboxAccount.DisplayClaims.xui[0].agg
 			},
 			profile: {
-				skins: [...profile.skins],
-				capes: [...profile.capes]
+				skins: [...(profile.skins || [])],
+				capes: [...(profile.capes || [])]
 			}
 		};
 	}
 
+	private async getProfileWithRetry(mcLogin: { access_token: string }, attempts = 3): Promise<MinecraftProfile | AuthError> {
+		let lastResult: MinecraftProfile | AuthError = { error: 'PROFILE_UNAVAILABLE' };
+		for (let i = 0; i < attempts; i++) {
+			lastResult = await this.getProfile(mcLogin);
+			if (!('error' in lastResult) && lastResult.id && lastResult.name) {
+				return lastResult;
+			}
+			if (i < attempts - 1) {
+				await sleep(400 * (i + 1));
+			}
+		}
+		return lastResult;
+	}
+
 	public async getProfile(mcLogin: { access_token: string }): Promise<MinecraftProfile | AuthError> {
 		try {
+			const token = mcLogin?.access_token;
+			if (!token) {
+				return { error: 'MISSING_MINECRAFT_ACCESS_TOKEN' };
+			}
 			const response = await fetch('https://api.minecraftservices.com/minecraft/profile', {
 				method: 'GET',
 				headers: {
-					Authorization: `Bearer ${mcLogin.access_token}`
+					Authorization: `Bearer ${token}`,
+					Accept: 'application/json'
 				}
 			});
 			const profile = await response.json();
 
 			if (profile.error) {
-				return { error: profile.error };
+				return { error: String(profile.error) };
+			}
+
+			if (!response.ok) {
+				const err = profile?.message || profile?.path || `HTTP_${response.status}`;
+				return { error: `PROFILE_HTTP_${response.status}_${err}` };
+			}
+
+			if (!profile.id || !profile.name) {
+				const keys = profile && typeof profile === 'object' ? Object.keys(profile).join(',') : 'none';
+				return { error: `PROFILE_INCOMPLETE_STATUS_${response.status}_KEYS_${keys}` };
 			}
 
 			if (Array.isArray(profile.skins)) {
 				for (const skin of profile.skins) {
 					if (skin.url) {
-						skin.base64 = `data:image/png;base64,${await getBase64(skin.url)}`;
+						try {
+							skin.base64 = `data:image/png;base64,${await getBase64(skin.url)}`;
+						} catch (_e) {}
 					}
 				}
 			}
 			if (Array.isArray(profile.capes)) {
 				for (const cape of profile.capes) {
 					if (cape.url) {
-						cape.base64 = `data:image/png;base64,${await getBase64(cape.url)}`;
+						try {
+							cape.base64 = `data:image/png;base64,${await getBase64(cape.url)}`;
+						} catch (_e) {}
 					}
 				}
 			}
