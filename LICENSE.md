@@ -1,6 +1,6 @@
-LUUXIS LICENSE v1.0 – LICENCE PERSONNALISÉE / CUSTOM LICENSE
+BENZOOgataga LICENSE v1.0 – LICENCE PERSONNALISÉE / CUSTOM LICENSE
 
-Copyright © 2025 Luuxis
+Copyright © 2026 BENZOOgataga
 
 FRANÇAIS 🇫🇷
 ────────────────────────────────────────────────────────────
@@ -21,10 +21,10 @@ L’utilisation, la modification et la redistribution sont autorisées sous rés
    - Toute version redistribuée ou modifiée doit publier son code source complet, librement et gratuitement accessible, sans restriction.
 
 4. 🧾 Attribution  
-   - Le nom de l’auteur original (« Luuxis ») doit être clairement mentionné dans toute redistribution ou version modifiée.
+   - Le nom de l’auteur original (« BENZOOgataga ») doit être clairement mentionné dans toute redistribution ou version modifiée.
 
 5. 🔐 Droit exclusif de revente par le créateur  
-   - Seul le Titulaire (Luuxis) est autorisé à vendre ou concéder une licence commerciale du code source.
+   - Seul le Titulaire (BENZOOgataga) est autorisé à vendre ou concéder une licence commerciale du code source.
 
 6. 🚫 Interdiction de modifier cette licence  
    - Il est interdit de modifier, supprimer ou remplacer cette licence. Toute redistribution doit inclure cette licence sans altération.
@@ -58,10 +58,10 @@ Use, modification, and redistribution are permitted under the following strict c
    - Any redistributed or modified version must make its complete source code freely and publicly accessible, without restrictions.
 
 4. 🧾 Attribution  
-   - The original author’s name (“Luuxis”) must be clearly credited in any redistribution or modified version.
+   - The original author’s name (“BENZOOgataga”) must be clearly credited in any redistribution or modified version.
 
 5. 🔐 Exclusive resale rights reserved by the creator  
-   - Only the Licensor (Luuxis) is allowed to sell or license this software or its source code for commercial purposes.
+   - Only the Licensor (BENZOOgataga) is allowed to sell or license this software or its source code for commercial purposes.
 
 6. 🚫 License modification is forbidden  
    - This license must not be altered, replaced, or removed. Any redistribution must include this license as-is.
