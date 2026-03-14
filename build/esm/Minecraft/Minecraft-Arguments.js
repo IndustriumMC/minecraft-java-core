@@ -195,23 +195,23 @@ export default class MinecraftArguments {
         const map = new Map();
         for (const dep of combinedLibraries) {
             const parts = getPathLibraries(dep.name);
-            const version = semver.valid(semver.coerce(parts.version));
-            if (!version)
-                continue;
-            const pathParts = parts.path.split('/');
-            const basePath = pathParts.slice(0, -1).join('/');
-            const key = `${basePath}/${parts.name.replace(`-${parts.version}`, '')}`;
-            const current = map.get(key);
+            const version = semver.valid(semver.coerce(parts.version.split('@')[0]));
+            const resolvedPath = `${dep.loader ? dep.loader : this.options.path}/libraries/${parts.path}/${parts.name}`.replace(/\\/g, '/');
+            const current = map.get(resolvedPath);
             const isSupportedVersion = semver.satisfies(semver.valid(semver.coerce(this.options.version)), '1.14.4 - 1.18.2');
             const isWindows = process.platform === 'win32';
-            if (!current || semver.gt(version, current.version) && (isSupportedVersion && isWindows)) {
-                map.set(key, { ...dep, version });
+            if (!current) {
+                map.set(resolvedPath, { ...dep, resolvedPath, version });
+                continue;
+            }
+            if (version && current.version && semver.gt(version, current.version) && (isSupportedVersion && isWindows)) {
+                map.set(resolvedPath, { ...dep, resolvedPath, version });
             }
         }
-        const latest = Object.fromEntries(Array.from(map.entries()).map(([key, value]) => [key, value]));
+        const latest = Array.from(map.values());
         // Prepare to accumulate all library paths
         const librariesList = [];
-        for (const lib of Object.values(latest)) {
+        for (const lib of latest) {
             // Skip certain logging libraries if flagged (e.g., in Forge's "loader" property)
             if (lib.loader && lib.name.startsWith('org.apache.logging.log4j:log4j-slf4j2-impl'))
                 continue;
@@ -226,15 +226,7 @@ export default class MinecraftArguments {
                 if (lib.rules[0].os.name !== MOJANG_LIBRARY_MAP[process.platform])
                     continue;
             }
-            // Build the path for this library
-            const libPath = getPathLibraries(lib.name);
-            if (lib.loader) {
-                // If the loader uses a specific library path
-                librariesList.push(`${lib.loader}/libraries/${libPath.path}/${libPath.name}`);
-            }
-            else {
-                librariesList.push(`${this.options.path}/libraries/${libPath.path}/${libPath.name}`);
-            }
+            librariesList.push(lib.resolvedPath);
         }
         // Add the main Minecraft JAR (or special jar if using old Forge or MCP)
         if (loaderJson?.isOldForge && loaderJson.jarPath) {
@@ -246,12 +238,13 @@ export default class MinecraftArguments {
         else {
             librariesList.push(`${this.options.path}/versions/${versionJson.id}/${versionJson.id}.jar`);
         }
-        // Filter out duplicates in the final library paths
+        // Filter out duplicate library paths
+        const seen = new Set();
         const uniquePaths = [];
         for (const libPath of librariesList) {
-            // We only check if we've already used the exact file name
-            const fileName = libPath.split('/').pop();
-            if (fileName && !uniquePaths.includes(fileName)) {
+            const normalized = libPath.replace(/\\/g, '/');
+            if (!seen.has(normalized)) {
+                seen.add(normalized);
                 uniquePaths.push(libPath);
             }
         }
