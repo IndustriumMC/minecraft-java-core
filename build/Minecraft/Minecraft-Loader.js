@@ -39,6 +39,7 @@ class MinecraftLoader extends events_1.EventEmitter {
                 type: this.options.loader.type,
                 version: version,
                 build: this.options.loader.build,
+                customUrls: this.options.loader.customUrls,
                 config: {
                     javaPath,
                     minecraftJar: `${this.options.path}/versions/${version}/${version}.jar`,
@@ -49,10 +50,16 @@ class MinecraftLoader extends events_1.EventEmitter {
         return new Promise((resolve, reject) => {
             loader.install();
             loader.on('json', (json) => {
-                // Inject the loader path into each library if needed
+                // Inject the loader path into each library if needed.
+                // Custom loaders install libraries into <mcRoot>/libraries/ (standard MC path),
+                // so lib.loader must point to mcRoot, not loaderPath.
+                // Standard loaders (forge/fabric/etc.) use loaderPath/libraries/.
+                const libBase = this.options.loader.type === 'custom'
+                    ? this.options.path
+                    : this.loaderPath;
                 const modifiedJson = json;
                 modifiedJson.libraries = modifiedJson.libraries.map(lib => {
-                    lib.loader = this.loaderPath;
+                    lib.loader = libBase;
                     return lib;
                 });
                 resolve(modifiedJson);
@@ -72,6 +79,10 @@ class MinecraftLoader extends events_1.EventEmitter {
             loader.on('patch', (patch) => {
                 // Forward the "patch" event
                 this.emit('patch', patch);
+            });
+            loader.on('data', (data) => {
+                // Forward installer subprocess output (used by custom loaders)
+                this.emit('data', data);
             });
             loader.on('error', (err) => {
                 reject(err);
@@ -100,10 +111,15 @@ class MinecraftLoader extends events_1.EventEmitter {
             args.game = moddedArgs.game;
         }
         if (moddedArgs.jvm) {
+            // For custom loaders, libraries are installed by the JAR installer into <mcRoot>/libraries/
+            // (standard Minecraft libraries directory). For built-in loaders, they go into loaderPath/libraries/.
+            const libraryDir = this.options.loader.type === 'custom'
+                ? `${this.options.path}/libraries`
+                : `${this.loaderPath}/libraries`;
             // Replace placeholders in the JVM arguments
             args.jvm = moddedArgs.jvm.map((jvmArg) => jvmArg
                 .replace(/\${version_name}/g, version)
-                .replace(/\${library_directory}/g, `${this.loaderPath}/libraries`)
+                .replace(/\${library_directory}/g, libraryDir)
                 .replace(/\${classpath_separator}/g, process.platform === 'win32' ? ';' : ':'));
         }
         args.mainClass = json.mainClass;

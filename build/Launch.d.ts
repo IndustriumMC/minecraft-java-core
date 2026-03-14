@@ -15,7 +15,7 @@ type loader = {
     /**
      * Loader type.
      *
-     * Acceptable values: `'forge'`, `'neoforge'`, `'fabric'`, `'legacyfabric'`, `'quilt'`.
+     * Acceptable values: `'forge'`, `'neoforge'`, `'fabric'`, `'legacyfabric'`, `'quilt'`, `'custom'`.
      */
     type?: string;
     /**
@@ -30,6 +30,17 @@ type loader = {
      * Should the launcher use a loader?
      */
     enable?: boolean;
+    /**
+     * Custom loader URLs. Required when `type` is `'custom'`.
+     *
+     * - `metaData`: URL returning `{ "versions": ["x.y.z", ...] }`
+     * - `install`: URL template for the installer JAR. Use `${version}` as placeholder.
+     *   Example: `'https://api.example.com/loader/myloader/installer/${version}'`
+     */
+    customUrls?: {
+        metaData: string;
+        install: string;
+    };
 };
 /**
  * Screen options.

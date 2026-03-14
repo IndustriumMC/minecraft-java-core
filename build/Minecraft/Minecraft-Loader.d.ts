@@ -13,6 +13,10 @@ interface LoaderOptions {
         path?: string;
         type?: string;
         build?: string;
+        customUrls?: {
+            metaData: string;
+            install: string;
+        };
     };
     downloadFileMultiple?: number;
 }

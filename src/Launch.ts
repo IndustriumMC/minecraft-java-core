@@ -23,30 +23,41 @@ import Downloader from './utils/Downloader.js';
 type loader = {
 	/**
 	 * Path to loader directory. Relative to absolute path to Minecraft's root directory (config option `path`).
-	 * 
+	 *
 	 * If `undefined`, defaults to `.minecraft/loader/<loader_type>`.
-	 * 
+	 *
 	 * Example: `'fabricfiles'`.
 	 */
 	path?: string,
 	/**
-	 * Loader type. 
-	 * 
-	 * Acceptable values: `'forge'`, `'neoforge'`, `'fabric'`, `'legacyfabric'`, `'quilt'`.
+	 * Loader type.
+	 *
+	 * Acceptable values: `'forge'`, `'neoforge'`, `'fabric'`, `'legacyfabric'`, `'quilt'`, `'custom'`.
 	 */
 	type?: string,
 	/**
 	 * Loader build (version).
-	 * 
+	 *
 	 * Acceptable values: `'latest'`, `'recommended'`, actual version.
-	 * 
+	 *
 	 * Example: `'0.16.3'`
 	 */
 	build?: string,
 	/**
 	 * Should the launcher use a loader?
 	 */
-	enable?: boolean
+	enable?: boolean,
+	/**
+	 * Custom loader URLs. Required when `type` is `'custom'`.
+	 *
+	 * - `metaData`: URL returning `{ "versions": ["x.y.z", ...] }`
+	 * - `install`: URL template for the installer JAR. Use `${version}` as placeholder.
+	 *   Example: `'https://api.example.com/loader/myloader/installer/${version}'`
+	 */
+	customUrls?: {
+		metaData: string,
+		install: string
+	}
 }
 
 /**
@@ -379,6 +390,10 @@ export default class Launch extends EventEmitter {
 
 			loaderInstall.on('patch', (patch: any) => {
 				this.emit('patch', patch);
+			});
+
+			loaderInstall.on('data', (data: any) => {
+				this.emit('data', data);
 			});
 
 			const jsonLoader = await loaderInstall.GetLoader(version, this.options.java.path ? this.options.java.path : gameJava.path)

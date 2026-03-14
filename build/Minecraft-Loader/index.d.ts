@@ -7,7 +7,7 @@ import { EventEmitter } from 'events';
  * Represents the user's selected loader type (Forge, Fabric, etc.).
  * Extend or refine as your application requires.
  */
-export type LoaderType = 'forge' | 'neoforge' | 'fabric' | 'legacyfabric' | 'quilt';
+export type LoaderType = 'forge' | 'neoforge' | 'fabric' | 'legacyfabric' | 'quilt' | 'custom';
 /**
  * Configuration for the loader (build, version, etc.).
  * For instance: { type: "forge", version: "1.19.2", build: "latest" }
@@ -20,6 +20,11 @@ export interface LoaderConfig {
         javaPath: string;
         minecraftJar: string;
         minecraftJson: string;
+    };
+    /** Required when type is 'custom'. Provides metadata and installer URL templates. */
+    customUrls?: {
+        metaData: string;
+        install: string;
     };
 }
 /**
@@ -88,6 +93,15 @@ export default class Loader extends EventEmitter {
      *  3. Download libraries
      */
     private legacyFabric;
+    /**
+     * Handles installation of a fully custom loader:
+     *  1. Fetches version list from customUrls.metaData
+     *  2. Selects version based on loader.build
+     *  3. Downloads the installer JAR
+     *  4. Runs the installer subprocess
+     *  5. Returns the installed version JSON
+     */
+    private custom;
     /**
      * Installs Quilt:
      *  1. Download the loader JSON

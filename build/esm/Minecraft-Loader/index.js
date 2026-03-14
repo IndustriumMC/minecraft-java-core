@@ -13,6 +13,7 @@ import NeoForge from './loader/neoForge/neoForge.js';
 import Fabric from './loader/fabric/fabric.js';
 import LegacyFabric from './loader/legacyfabric/legacyFabric.js';
 import Quilt from './loader/quilt/quilt.js';
+import Custom from './loader/custom/custom.js';
 /**
  * The main Loader class that orchestrates installation of different
  * Minecraft mod loaders (Forge, Fabric, LegacyFabric, Quilt, etc.).
@@ -31,39 +32,44 @@ export default class Loader extends EventEmitter {
      *  - "json" upon successful completion, returning the version JSON or loader info
      */
     async install() {
-        // Retrieve a loader definition from your `loaderFunction`
-        // (Presumably a function that returns metadata URLs, etc. based on the type.)
-        const LoaderData = loaderFunction(this.options.loader.type);
-        if (!LoaderData) {
-            this.emit('error', { error: `Loader ${this.options.loader.type} not found` });
-            return;
-        }
         const loaderType = this.options.loader.type;
         let result;
-        switch (loaderType) {
-            case 'forge': {
-                result = await this.forge(LoaderData);
-                break;
-            }
-            case 'neoforge': {
-                result = await this.neoForge(LoaderData);
-                break;
-            }
-            case 'fabric': {
-                result = await this.fabric(LoaderData);
-                break;
-            }
-            case 'legacyfabric': {
-                result = await this.legacyFabric(LoaderData);
-                break;
-            }
-            case 'quilt': {
-                result = await this.quilt(LoaderData);
-                break;
-            }
-            default: {
+        if (loaderType === 'custom') {
+            // Custom loaders bypass loaderFunction entirely and use customUrls from options.
+            result = await this.custom();
+        }
+        else {
+            // Retrieve a loader definition from loaderFunction for built-in loaders.
+            const LoaderData = loaderFunction(loaderType);
+            if (!LoaderData) {
                 this.emit('error', { error: `Loader ${loaderType} not found` });
                 return;
+            }
+            switch (loaderType) {
+                case 'forge': {
+                    result = await this.forge(LoaderData);
+                    break;
+                }
+                case 'neoforge': {
+                    result = await this.neoForge(LoaderData);
+                    break;
+                }
+                case 'fabric': {
+                    result = await this.fabric(LoaderData);
+                    break;
+                }
+                case 'legacyfabric': {
+                    result = await this.legacyFabric(LoaderData);
+                    break;
+                }
+                case 'quilt': {
+                    result = await this.quilt(LoaderData);
+                    break;
+                }
+                default: {
+                    this.emit('error', { error: `Loader ${loaderType} not found` });
+                    return;
+                }
             }
         }
         // If there's an error property, emit it. Otherwise, emit the final JSON.
@@ -238,6 +244,27 @@ export default class Loader extends EventEmitter {
             await legacyFabric.downloadLibraries(json);
         }
         return json;
+    }
+    /**
+     * Handles installation of a fully custom loader:
+     *  1. Fetches version list from customUrls.metaData
+     *  2. Selects version based on loader.build
+     *  3. Downloads the installer JAR
+     *  4. Runs the installer subprocess
+     *  5. Returns the installed version JSON
+     */
+    async custom() {
+        const custom = new Custom(this.options);
+        custom.on('progress', (progress, size, element) => {
+            this.emit('progress', progress, size, element);
+        });
+        custom.on('extract', (element) => {
+            this.emit('extract', element);
+        });
+        custom.on('data', (data) => {
+            this.emit('data', data);
+        });
+        return await custom.downloadAndInstall();
     }
     /**
      * Installs Quilt:

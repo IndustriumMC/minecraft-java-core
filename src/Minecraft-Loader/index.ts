@@ -15,12 +15,13 @@ import NeoForge from './loader/neoForge/neoForge.js';
 import Fabric from './loader/fabric/fabric.js';
 import LegacyFabric from './loader/legacyfabric/legacyFabric.js';
 import Quilt from './loader/quilt/quilt.js';
+import Custom from './loader/custom/custom.js';
 
 /**
  * Represents the user's selected loader type (Forge, Fabric, etc.).
  * Extend or refine as your application requires.
  */
-export type LoaderType = 'forge' | 'neoforge' | 'fabric' | 'legacyfabric' | 'quilt';
+export type LoaderType = 'forge' | 'neoforge' | 'fabric' | 'legacyfabric' | 'quilt' | 'custom';
 
 /**
  * Configuration for the loader (build, version, etc.).
@@ -35,7 +36,11 @@ export interface LoaderConfig {
 		minecraftJar: string;
 		minecraftJson: string;
 	};
-	// Feel free to add additional fields if needed
+	/** Required when type is 'custom'. Provides metadata and installer URL templates. */
+	customUrls?: {
+		metaData: string;
+		install: string;
+	};
 }
 
 /**
@@ -79,41 +84,45 @@ export default class Loader extends EventEmitter {
 	 *  - "json" upon successful completion, returning the version JSON or loader info
 	 */
 	public async install(): Promise<void> {
-		// Retrieve a loader definition from your `loaderFunction`
-		// (Presumably a function that returns metadata URLs, etc. based on the type.)
-		const LoaderData = loaderFunction(this.options.loader.type);
-		if (!LoaderData) {
-			this.emit('error', { error: `Loader ${this.options.loader.type} not found` });
-			return;
-		}
-
 		const loaderType = this.options.loader.type;
 		let result: LoaderResult | undefined;
 
-		switch (loaderType) {
-			case 'forge': {
-				result = await this.forge(LoaderData);
-				break;
-			}
-			case 'neoforge': {
-				result = await this.neoForge(LoaderData);
-				break;
-			}
-			case 'fabric': {
-				result = await this.fabric(LoaderData);
-				break;
-			}
-			case 'legacyfabric': {
-				result = await this.legacyFabric(LoaderData);
-				break;
-			}
-			case 'quilt': {
-				result = await this.quilt(LoaderData);
-				break;
-			}
-			default: {
+		if (loaderType === 'custom') {
+			// Custom loaders bypass loaderFunction entirely and use customUrls from options.
+			result = await this.custom();
+		} else {
+			// Retrieve a loader definition from loaderFunction for built-in loaders.
+			const LoaderData = loaderFunction(loaderType);
+			if (!LoaderData) {
 				this.emit('error', { error: `Loader ${loaderType} not found` });
 				return;
+			}
+
+			switch (loaderType) {
+				case 'forge': {
+					result = await this.forge(LoaderData);
+					break;
+				}
+				case 'neoforge': {
+					result = await this.neoForge(LoaderData);
+					break;
+				}
+				case 'fabric': {
+					result = await this.fabric(LoaderData);
+					break;
+				}
+				case 'legacyfabric': {
+					result = await this.legacyFabric(LoaderData);
+					break;
+				}
+				case 'quilt': {
+					result = await this.quilt(LoaderData);
+					break;
+				}
+				default: {
+					this.emit('error', { error: `Loader ${loaderType} not found` });
+					return;
+				}
 			}
 		}
 
@@ -298,6 +307,30 @@ export default class Loader extends EventEmitter {
 			await legacyFabric.downloadLibraries(json);
 		}
 		return json;
+	}
+
+	/**
+	 * Handles installation of a fully custom loader:
+	 *  1. Fetches version list from customUrls.metaData
+	 *  2. Selects version based on loader.build
+	 *  3. Downloads the installer JAR
+	 *  4. Runs the installer subprocess
+	 *  5. Returns the installed version JSON
+	 */
+	private async custom(): Promise<LoaderResult> {
+		const custom = new Custom(this.options);
+
+		custom.on('progress', (progress: number, size: number, element: string) => {
+			this.emit('progress', progress, size, element);
+		});
+		custom.on('extract', (element: string) => {
+			this.emit('extract', element);
+		});
+		custom.on('data', (data: string) => {
+			this.emit('data', data);
+		});
+
+		return await custom.downloadAndInstall();
 	}
 
 	/**
