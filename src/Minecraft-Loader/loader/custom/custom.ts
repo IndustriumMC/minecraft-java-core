@@ -110,6 +110,7 @@ export default class CustomLoader extends EventEmitter {
 
 		// 5. Run installer subprocess
 		this.emit('extract', `Running custom loader installer (version ${selectedVersion})...`);
+		const installStartedAt = Date.now();
 
 		const exitCode = await new Promise<number>((resolve) => {
 			const proc = spawn(
@@ -143,20 +144,41 @@ export default class CustomLoader extends EventEmitter {
 			return { error: `Custom loader installer exited with code ${exitCode}` };
 		}
 
-		// 6. Detect newly installed version directory
+		// 6. Detect the version profile created or updated by the installer
 		const versionsAfter = fs.readdirSync(versionsDir);
-		const newVersions = versionsAfter.filter(v => !versionsBefore.has(v));
+		const versionCandidates = versionsAfter
+			.map(versionId => {
+				const versionJsonPath = path.resolve(versionsDir, versionId, `${versionId}.json`);
+				if (!fs.existsSync(versionJsonPath)) {
+					return null;
+				}
 
-		if (newVersions.length === 0) {
-			return { error: 'Installer ran successfully but no new version directory was created in versions/' };
+				const stats = fs.statSync(versionJsonPath);
+				return {
+					versionId,
+					versionJsonPath,
+					isNew: !versionsBefore.has(versionId),
+					modifiedAt: stats.mtimeMs
+				};
+			})
+			.filter((candidate): candidate is {
+				versionId: string;
+				versionJsonPath: string;
+				isNew: boolean;
+				modifiedAt: number;
+			} => candidate !== null);
+
+		const versionMatch =
+			versionCandidates.find(candidate => candidate.isNew) ??
+			versionCandidates
+				.filter(candidate => candidate.modifiedAt >= installStartedAt - 1000)
+				.sort((a, b) => b.modifiedAt - a.modifiedAt)[0];
+
+		if (!versionMatch) {
+			return { error: 'Installer ran successfully but no version profile was created or updated in versions/' };
 		}
 
-		const versionId = newVersions[0];
-		const versionJsonPath = path.resolve(versionsDir, versionId, `${versionId}.json`);
-
-		if (!fs.existsSync(versionJsonPath)) {
-			return { error: `Version JSON not found at expected path: ${versionJsonPath}` };
-		}
+		const { versionId, versionJsonPath } = versionMatch;
 
 		// 7. Read and return version JSON
 		let versionJson: LoaderResult;
