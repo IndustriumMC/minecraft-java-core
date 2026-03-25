@@ -15,6 +15,18 @@ const Index_js_1 = require("./Index.js");
  * emitting events for progress, speed, estimated time, and errors.
  */
 class Downloader extends events_1.EventEmitter {
+    async getErrorDetail(response) {
+        try {
+            const text = (await response.text()).trim();
+            if (!text)
+                return '';
+            const compact = text.replace(/\s+/g, ' ');
+            return ` - ${compact.slice(0, 200)}`;
+        }
+        catch {
+            return '';
+        }
+    }
     /**
      * Downloads a single file from the given URL to the specified local path.
      * Emits "progress" events with the number of bytes downloaded and total size.
@@ -27,13 +39,38 @@ class Downloader extends events_1.EventEmitter {
         if (!fs_1.default.existsSync(dirPath)) {
             fs_1.default.mkdirSync(dirPath, { recursive: true });
         }
-        const writer = fs_1.default.createWriteStream(`${dirPath}/${fileName}`);
         const response = await fetch(url);
+        if (!response.ok) {
+            const detail = await this.getErrorDetail(response);
+            throw new Error(`Failed to download '${url}': HTTP ${response.status}${detail}`);
+        }
+        if (!response.body) {
+            throw new Error(`Failed to download '${url}': empty response body`);
+        }
+        const writer = fs_1.default.createWriteStream(`${dirPath}/${fileName}`);
         const contentLength = response.headers.get('content-length');
         const totalSize = contentLength ? parseInt(contentLength, 10) : 0;
         let downloaded = 0;
         return new Promise((resolve, reject) => {
             const body = (0, Index_js_1.fromAnyReadable)(response.body);
+            let settled = false;
+            const fail = (err) => {
+                if (settled)
+                    return;
+                settled = true;
+                writer.destroy();
+                this.emit('error', err);
+                reject(err);
+            };
+            writer.on('finish', () => {
+                if (settled)
+                    return;
+                settled = true;
+                resolve();
+            });
+            writer.on('error', (err) => {
+                fail(err);
+            });
             body.on('data', (chunk) => {
                 downloaded += chunk.length;
                 // Emit progress with the current number of bytes vs. total size
@@ -42,12 +79,9 @@ class Downloader extends events_1.EventEmitter {
             });
             body.on('end', () => {
                 writer.end();
-                resolve();
             });
             body.on('error', (err) => {
-                writer.destroy();
-                this.emit('error', err);
-                reject(err);
+                fail(err);
             });
         });
     }
@@ -90,33 +124,51 @@ class Downloader extends events_1.EventEmitter {
             if (!fs_1.default.existsSync(file.folder)) {
                 fs_1.default.mkdirSync(file.folder, { recursive: true, mode: 0o777 });
             }
-            const writer = fs_1.default.createWriteStream(file.path, { flags: 'w', mode: 0o777 });
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), timeout);
             try {
                 const response = await fetch(file.url, { signal: controller.signal });
                 clearTimeout(timeoutId);
+                if (!response.ok) {
+                    const detail = await this.getErrorDetail(response);
+                    throw new Error(`Failed to download '${file.url}': HTTP ${response.status}${detail}`);
+                }
+                if (!response.body) {
+                    throw new Error(`Failed to download '${file.url}': empty response body`);
+                }
+                const writer = fs_1.default.createWriteStream(file.path, { flags: 'w', mode: 0o777 });
                 const stream = (0, Index_js_1.fromAnyReadable)(response.body);
+                let finished = false;
+                const complete = () => {
+                    if (finished)
+                        return;
+                    finished = true;
+                    completed++;
+                    downloadNext();
+                };
                 stream.on('data', (chunk) => {
                     downloaded += chunk.length;
                     this.emit('progress', downloaded, size, file.type);
                     writer.write(chunk);
                 });
+                writer.on('finish', () => {
+                    complete();
+                });
+                writer.on('error', (err) => {
+                    this.emit('error', err);
+                    complete();
+                });
                 stream.on('end', () => {
                     writer.end();
-                    completed++;
-                    downloadNext();
                 });
                 stream.on('error', (err) => {
                     writer.destroy();
                     this.emit('error', err);
-                    completed++;
-                    downloadNext();
+                    complete();
                 });
             }
             catch (e) {
                 clearTimeout(timeoutId);
-                writer.destroy();
                 this.emit('error', e);
                 completed++;
                 downloadNext();

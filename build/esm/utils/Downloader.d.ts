@@ -23,6 +23,7 @@ export interface DownloadOptions {
  * emitting events for progress, speed, estimated time, and errors.
  */
 export default class Downloader extends EventEmitter {
+    private getErrorDetail;
     /**
      * Downloads a single file from the given URL to the specified local path.
      * Emits "progress" events with the number of bytes downloaded and total size.
